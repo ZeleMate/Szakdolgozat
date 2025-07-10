@@ -76,12 +76,17 @@ CLEANED_PARQUET_DATA_PATH = PROCESSED_DATA_DIR / 'cleaned_documents.parquet'
 
 # === SZÖVEGTISZTÍTÁSI BEÁLLÍTÁSOK ===
 CLEANING_MIN_TEXT_LENGTH = 150 # Minimum karakterhossz, ami alatt a szöveget zajnak tekintjük
+REMOVE_HUNGARIAN_STOPWORDS = True # Magyar stopwordök eltávolítása a szövegből
+
+# === TÁMOGATOTT FÁJLTÍPUSOK ===
+SUPPORTED_TEXT_EXTENSIONS = ['.rtf', '.docx'] # Támogatott szövegfájl kiterjesztések
 
 print(f"📦 Azure Konténer: {AZURE_CONTAINER_NAME}")
 print(f"📄 Bemeneti Blob: {INPUT_AZURE_PATH}")
 print(f"💾 Kimeneti Blob: {OUTPUT_AZURE_PATH}")
 print(f"🤖 Modell: {MODEL_NAME}")
-print(f"🔪 Chunking: Méret={CHUNK_SIZE}, Átfedés={CHUNK_OVERLAP}\n")
+print(f"🔪 Chunking: Méret={CHUNK_SIZE}, Átfedés={CHUNK_OVERLAP}")
+print(f"🇭🇺 Magyar Stopword Szűrés: {'AKTÍV' if REMOVE_HUNGARIAN_STOPWORDS else 'INAKTÍV'}\n")
 
 # === 3. OSZTÁLYOK ÉS FÜGGVÉNYEK DEFINÍCIÓJA ===
 print("--- [3/6] Osztályok és függvények definiálása ---")

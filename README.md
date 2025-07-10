@@ -87,6 +87,9 @@ graph TD
 ### Főbb Rendszerkomponensek
 
 - **Adatfeldolgozási Réteg**: Több mint 200,000 bírósági határozat feldolgozása és strukturálása. *(Megjegyzés: a pontos szám a felhasznált adatforrástól függ.)*
+  - **Magyar Stopword Szűrés**: Automatikus magyar stopwordök eltávolítása a szövegekből (85+ stopword)
+  - **Szöveg Tisztítás**: HTML tagek, URL-ek, RTF maradványok eltávolítása
+  - **Karakter Normalizálás**: Magyar ékezetes karakterek kezelése
 - **Embedding Réteg**: `Qwen/Qwen3-Embedding-0.6B` (1024D) modell használata. Az embedding generálás GPU-t igényel (pl. A100), de a rendszer többi része CPU-n is futtatható.
 - **Gráf Réteg**: NetworkX irányított gráf, amely a dokumentumok, jogszabályok és bíróságok kapcsolatait modellezi. *(Megjegyzés: a gráf mérete—csomópontok és élek száma—az adatbázis méretétől függ.)*
 - **Hibrid Keresési Motor**: `faiss-cpu` alapú ANN keresés és gráf algoritmusok kombinációja.
@@ -122,6 +125,46 @@ A projekt futtatásához szükséges környezet beállítása `conda` segítség
     ```bash
     conda activate courtrankrl
     ```
+
+## Magyar Stopword Szűrés
+
+A rendszer automatikusan kiszűri a magyar stopwordöket a bírósági határozatok szövegeiből, ami javítja a szemantikus keresés minőségét és csökkenti a zajt.
+
+### Funkciók
+
+- **85+ magyar stopword**: Alapvető névelők, kötőszók, határozószók, módosítószók
+- **Jogi domain specifikus stopwordök**: Jogi szövegekben gyakran előforduló, de információs érték nélküli szavak
+- **Konfigurálható**: A `configs/config.py` fájlban beállítható
+- **Statisztika**: Részletes jelentés az eltávolított stopwordök számáról
+
+### Konfiguráció
+
+A `configs/config.py` fájlban:
+
+```python
+# Magyar stopwordök eltávolítása a szövegből
+REMOVE_HUNGARIAN_STOPWORDS = True  # True/False
+```
+
+### Példa
+
+```python
+# Eredeti szöveg
+"A bíróság szerint ez a határozat megfelelően indokolt."
+
+# Stopword szűrés után
+"bíróság határozat indokolt."
+```
+
+### Stopword Kategóriák
+
+- **Alapvető stopwordök**: a, az, és, vagy, de, hogy, mint
+- **Névmások**: én, te, ő, mi, ti, ők, magam, magad, maga
+- **Elöljárók és kötőszók**: alatt, által, belül, ellen, előtt
+- **Határozószók**: itt, ott, hol, mikor, hogyan, miért
+- **Segédigék**: van, vannak, volt, voltak, lesz, lesznek
+- **Jogi domain specifikus**: szerint, alapján, értelmében, megfelelően
+- **Módosítószók**: is, sem, csak, még, már, most, akkor
 
 ## Kutatási Hozzájárulások
 

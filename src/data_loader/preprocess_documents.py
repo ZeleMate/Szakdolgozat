@@ -13,6 +13,7 @@ import csv
 from docx import Document
 from bs4 import BeautifulSoup
 import html
+from typing import Set
 
 # Projekt gyökérkönyvtárának hozzáadása a Python útvonalhoz
 project_root = Path(__file__).resolve().parent.parent.parent
@@ -29,13 +30,126 @@ except ImportError as e:
 # Loggolás beállítása
 logging.basicConfig(level=config.LOGGING_LEVEL, format=config.LOGGING_FORMAT)
 
-def clean_text_for_embedding(text: str) -> str:
+# Magyar stopword lista
+HUNGARIAN_STOPWORDS = {
+    # Alapvető stopwordök
+    'a', 'az', 'és', 'vagy', 'de', 'hogy', 'mint', 'mely', 'aki', 'ami', 'ez', 'az',
+    'ezek', 'azok', 'ezt', 'azt', 'ennek', 'annak', 'erre', 'arra', 'ide', 'oda',
+    'itt', 'ott', 'itt', 'ott', 'itt', 'ott', 'itt', 'ott', 'itt', 'ott',
+    
+    # Névelők és determinánsok
+    'egy', 'minden', 'valamennyi', 'néhány', 'sok', 'kevés', 'több', 'kevesebb',
+    'annyi', 'ennyi', 'annyi', 'ennyi', 'annyi', 'ennyi', 'annyi', 'ennyi',
+    
+    # Névmások
+    'én', 'te', 'ő', 'mi', 'ti', 'ők', 'magam', 'magad', 'maga', 'magunk', 'magatok', 'maguk',
+    'ön', 'önök', 'önmaga', 'önmaguk', 'mindenki', 'valaki', 'senki', 'bárki',
+    
+    # Elöljárók és kötőszók
+    'alatt', 'által', 'belül', 'ellen', 'előtt', 'felett', 'helyett', 'keresztül',
+    'kívül', 'mellett', 'mögött', 'nélkül', 'szerint', 'után', 'valamint', 'végül',
+    
+    # Határozószók
+    'itt', 'ott', 'hol', 'mikor', 'hogyan', 'miért', 'milyen', 'mennyi', 'ahol',
+    'amikor', 'ahogy', 'amíg', 'míg', 'mialatt', 'mióta', 'mióta', 'mivel',
+    
+    # Segédigék és módosítószók
+    'van', 'vannak', 'volt', 'voltak', 'lesz', 'lesznek', 'lenni', 'lenni',
+    'fog', 'fognak', 'tud', 'tudnak', 'akar', 'akarnak', 'kell', 'kellenek',
+    'szabad', 'szabadnak', 'muszáj', 'muszájnak', 'lehet', 'lehetnek',
+    
+    # Gyakori igék
+    'csinál', 'csinálnak', 'tesz', 'tennek', 'ad', 'adnak', 'vesz', 'vesznek',
+    'jön', 'jönnek', 'megy', 'mennek', 'áll', 'állnak', 'ül', 'ülnek',
+    'fekszik', 'fekszenek', 'alszik', 'alszanak', 'eszik', 'esznek',
+    
+    # Módosítószók és kötőszók
+    'is', 'sem', 'csak', 'még', 'már', 'most', 'akkor', 'soha', 'mindig',
+    'néha', 'gyakran', 'ritkán', 'hamar', 'későn', 'korán', 'később',
+    'előbb', 'utóbb', 'azután', 'azelőtt', 'ekkor', 'akkor', 'mikor',
+    
+    # Számok és mennyiségek
+    'egy', 'kettő', 'három', 'négy', 'öt', 'hat', 'hét', 'nyolc', 'kilenc', 'tíz',
+    'száz', 'ezer', 'millió', 'milliárd', 'első', 'második', 'harmadik',
+    
+    # Időtartamok
+    'ma', 'tegnap', 'holnap', 'idén', 'tavaly', 'jövőre', 'hét', 'hónap', 'év',
+    'perc', 'óra', 'nap', 'hét', 'hónap', 'év', 'évszázad', 'évezred',
+    
+    # Helyek és irányok
+    'itt', 'ott', 'hol', 'ahol', 'ide', 'oda', 'erre', 'arra', 'fel', 'le',
+    'felül', 'alul', 'kint', 'bent', 'külső', 'belső', 'jobb', 'bal',
+    
+    # Módosítószók és jelzők
+    'nagy', 'kicsi', 'hosszú', 'rövid', 'széles', 'keskeny', 'magas', 'alacsony',
+    'vastag', 'vékony', 'erős', 'gyenge', 'kemény', 'puha', 'hideg', 'meleg',
+    'új', 'régi', 'fiatal', 'öreg', 'szép', 'csúnya', 'jó', 'rossz',
+    
+    # Gyakori szavak a jogi szövegekben
+    'szerint', 'alapján', 'értelmében', 'megfelelően', 'szem előtt', 'figyelembe',
+    'véve', 'tekintettel', 'kifolyólag', 'okán', 'miatt', 'folytán', 'eredményeként',
+    'következtében', 'alapján', 'szerint', 'megfelelően', 'megfelelő', 'megfelel',
+    'megfelelnek', 'megfelelő', 'megfelelően', 'megfelelő', 'megfelelően',
+    
+    # Üres szavak és gyakori kifejezések
+    'szóval', 'vagyis', 'tehát', 'ugyanis', 'mivel', 'mert', 'mert', 'mert',
+    'ugyanakkor', 'azonban', 'viszont', 'ellenben', 'ellenkezőleg', 'fordítva',
+    'egyébként', 'egyébként', 'egyébként', 'egyébként', 'egyébként',
+    
+    # Rövidítések és gyakori kifejezések
+    'stb', 'st', 'vö', 'lásd', 'ld', 'pl', 'például', 'például', 'például',
+    'stb', 'st', 'vö', 'lásd', 'ld', 'pl', 'például', 'például', 'például'
+}
+
+def remove_hungarian_stopwords(text: str, stopwords: Set[str] | None = None) -> tuple[str, int]:
     """
-    Szöveg alapos tisztítása embedding generálás előtt.
-    Eltávolítja a HTML tageket, speciális karaktereket, URL-eket, és normalizálja a whitespace-t.
+    Magyar stopwordök eltávolítása a szövegből.
+    
+    Args:
+        text: A tisztítandó szöveg
+        stopwords: Stopword halmaz (alapértelmezett: HUNGARIAN_STOPWORDS)
+    
+    Returns:
+        Tuple: (A stopwordök nélküli szöveg, eltávolított stopwordök száma)
     """
     if not isinstance(text, str) or not text.strip():
-        return ""
+        return "", 0
+    
+    if stopwords is None:
+        stopwords = HUNGARIAN_STOPWORDS
+    
+    # Szöveg szavakra bontása, megtartva a szóközöket és írásjeleket
+    words = text.split()
+    filtered_words = []
+    removed_count = 0
+    
+    for word in words:
+        # Szó tisztítása (írásjelek eltávolítása a hasonlítás előtt)
+        clean_word = re.sub(r'[^\wáéíóöőúüűÁÉÍÓÖŐÚÜŰ]', '', word.lower())
+        
+        # Ha a tisztított szó nincs a stopword listában, megtartjuk
+        if clean_word and clean_word not in stopwords:
+            filtered_words.append(word)
+        elif clean_word:
+            removed_count += 1
+    
+    return ' '.join(filtered_words), removed_count
+
+def clean_text_for_embedding(text: str, remove_stopwords: bool = True) -> tuple[str, int]:
+    """
+    Szöveg alapos tisztítása embedding generálás előtt.
+    Eltávolítja a HTML tageket, speciális karaktereket, URL-eket, normalizálja a whitespace-t,
+    és opcionálisan kiszűri a magyar stopwordöket.
+    
+    Args:
+        text: A tisztítandó szöveg
+        remove_stopwords: Ha True, eltávolítja a magyar stopwordöket
+    
+    Returns:
+        Tuple: (A tisztított szöveg, eltávolított stopwordök száma)
+    """
+    if not isinstance(text, str) or not text.strip():
+        return "", 0
     
     # HTML entitások dekódolása (pl. &amp; -> &)
     try:
@@ -68,7 +182,14 @@ def clean_text_for_embedding(text: str) -> str:
     # Többszörös szóközök, tabulátorok, új sorok cseréje egyetlen szóközre
     text = re.sub(r'\s+', ' ', text).strip()
     
-    return text
+    # Magyar stopwordök eltávolítása (opcionális)
+    removed_count = 0
+    if remove_stopwords:
+        text, removed_count = remove_hungarian_stopwords(text)
+        # Újabb whitespace normalizálás a stopword eltávolítás után
+        text = re.sub(r'\s+', ' ', text).strip()
+    
+    return text, removed_count
 
 # Adat könyvtár elérési útja a konfigurációból
 root_dir_to_scan = project_root / 'data'
@@ -77,12 +198,17 @@ paths = list(root_dir_to_scan.rglob('*'))
 # A feldolgozott rekordokat egyetlen listában gyűjtjük
 all_records = []
 total_records = 0
+stopwords_removed_count = 0  # Statisztika a stopword eltávolításról
 
 # Támogatott szövegfájl kiterjesztések
 SUPPORTED_EXTENSIONS = tuple(ext.lower() for ext in config.SUPPORTED_TEXT_EXTENSIONS)
 
 logging.info(f"Feldolgozás kezdése, cél: egyetlen CSV fájl.")
 logging.info(f"Találva {len(paths):,} potenciális fájl")
+if config.REMOVE_HUNGARIAN_STOPWORDS:
+    logging.info("🇭🇺 Magyar stopword szűrés AKTÍV - a stopwordök eltávolításra kerülnek a szövegekből")
+else:
+    logging.info("🇭🇺 Magyar stopword szűrés INAKTÍV - a stopwordök megmaradnak a szövegekben")
 
 for path in tqdm(paths, desc="Dokumentumfájlok feldolgozása"):
     if path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS:
@@ -107,7 +233,11 @@ for path in tqdm(paths, desc="Dokumentumfájlok feldolgozása"):
                 logging.warning(f"Nem sikerült kinyerni a szöveget a DOCX fájlból ({text_path}): {e}")
         
         # A kinyert nyers szöveg azonnali tisztítása
-        cleaned_text_content = clean_text_for_embedding(text_content)
+        cleaned_text_content, removed_stopwords = clean_text_for_embedding(
+            text_content, 
+            remove_stopwords=config.REMOVE_HUNGARIAN_STOPWORDS
+        )
+        stopwords_removed_count += removed_stopwords
 
         # Csak akkor dolgozzuk fel a rekordot, ha a tisztítás után is maradt értékelhető szöveg
         if len(cleaned_text_content) < config.CLEANING_MIN_TEXT_LENGTH:
@@ -211,4 +341,6 @@ if all_records:
 # ===== VÉGSŐ ÜZENETEK =====
 print(f"\n✅ PREPROCESSING BEFEJEZVE!")
 print(f"📊 Feldolgozott rekordok: {total_records:,}")
+if config.REMOVE_HUNGARIAN_STOPWORDS:
+    print(f"🇭🇺 Eltávolított magyar stopwordök: {stopwords_removed_count:,}")
 print(f"📄 Kimeneti fájl: {config.CLEANED_PARQUET_DATA_PATH}")
